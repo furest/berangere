@@ -1,0 +1,9 @@
+{
+    "keys":{
+        "keyname":"api_key",
+    },
+    "authorized_channel_names":["example_channel" ],
+    "sounds_base_dir":"./sounds",
+    "command_prefix":"0",
+    "separator":" | "
+}
