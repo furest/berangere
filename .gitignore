@@ -3,6 +3,7 @@ config.json
 sons/
 bot.db
 .vscode/
+berangere.env
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

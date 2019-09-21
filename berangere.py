@@ -34,6 +34,8 @@ class Berangere(commands.Bot):
         """
         Returns true if the name of the channel is in AUTHORIZED_CHANNEL_NAMES
         """
+        if len(config["authorized_channel_names"]) == 0:
+            return True
         channel = ctx.channel
         if channel.type == discord.ChannelType.private:
             return True

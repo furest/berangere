@@ -4,8 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=vnct
-Group=vnct
+User=$USER
+Group=$GROUP
+EnvironmentFile=/etc/berangere/berangere.env
 WorkingDirectory=/etc/berangere/
 ExecStart=/usr/bin/python3 berangere.py -k %i
 RestartSec=10s
