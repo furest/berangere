@@ -390,9 +390,9 @@ if __name__ == "__main__":
     keyname = args.key
     if keyname != None:
         try:
-            KEY=config['keys'][keyname]
+            KEY=config['keys'][keyname[0]]
         except:
-            print(f"There is no key named {keyname}. Please check config.json")
+            print(f"There is no key named {keyname[0]}. Please check config.json")
             sys.exit()
     else:
         try:
