@@ -152,13 +152,17 @@ class Berangere(commands.Bot):
                 await ctx.voice_client.disconnect()
 
         @self.command()
-        async def playAll(ctx, directory=config['sounds_base_dir']):
+        async def playAll(ctx, directory=None):
             """
             Plays all sounds in the default directory or in the directory specified
             """
+            if directory == None:
+                directory = config['sounds_base_dir']
+            else:
+                directory = "./"+directory
             try:
                 must_disconnect=False
-                all_songs = [f for f in os.listdir(f"./{directory}") if os.path.splitext(f)[-1] == ".mp3"]
+                all_songs = [f for f in os.listdir(f"{directory}") if os.path.splitext(f)[-1] == ".mp3"]
                 if ctx.voice_client == None:
                     await ctx.author.voice.channel.connect()
                     must_disconnect=True
