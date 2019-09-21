@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/berangere/berangere.env
 User=root
 Group=root
 WorkingDirectory=/etc/berangere/
