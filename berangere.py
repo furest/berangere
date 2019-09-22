@@ -19,14 +19,15 @@ class Berangere(commands.Bot):
         self.setup_commands()
         self.saturation = dict()
         self.volume = dict()
+        self.loops =list()
         if not os.path.isfile("bot.db"):
             conn = sqlite3.connect("bot.db")
             cur = conn.cursor()
             cur.execute("""create table users(
-                ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                last_seen TEXT
-            )""")
+                                ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT,
+                                last_seen TEXT
+                            )""")
             conn.commit()
             
 
@@ -138,6 +139,8 @@ class Berangere(commands.Bot):
             """
             Check if the bot is playing in the same channel as the user and disconnects it from the channel
             """
+            if ctx.guild in self.loops:
+                self.loops.remove(ctx.guild)
             if Berangere.is_playing(ctx):
                 Berangere.stop(ctx)
             else:
@@ -181,8 +184,8 @@ class Berangere(commands.Bot):
                 print(ex)
                 await ctx.send("Try sending from a channel on your guild")
             except discord.errors.ClientException as ex:
-                print(ex)
                 #Not member of the guild or busy playing in same guild
+                print(ex)
                 await ctx.send("Sorry but the bot is in another channel")
                 return
 
@@ -244,17 +247,29 @@ class Berangere(commands.Bot):
                     before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
                     volume=self.volume.get(ctx.guild, 1)
                     def repeat_or_disconnect(err):
+                        if ctx.guild not in self.loops:
+                            return
                         nonlocal plays_done
                         plays_done = plays_done + 1
+                        if err != None:
+                            if ctx.guild in self.loops:
+                                self.loops.remove(ctx.guild)
+                            return
                         if plays_done == repeat:
-                            loop.create_task(ctx.voice_client.disconnect(force=True))
+                            if ctx.guild in self.loops:
+                                self.loops.remove(ctx.guild)
+                            if must_disconnect:
+                                loop.create_task(ctx.voice_client.disconnect(force=True))
                         else:
                             time.sleep(delay)
                             audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
                             audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
                             ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
+
                     audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
                     audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
+                    if ctx.guild not in self.loops:
+                        self.loops.append(ctx.guild)
                     ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
             except AttributeError as ex:
                 print(ex)
