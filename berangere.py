@@ -8,6 +8,9 @@ import json
 import argparse
 from datetime import datetime
 import sqlite3
+import pafy
+
+#Requires discord.py pynacl youtube-dl pafy
 
 def escapeshellarg(arg):
     return "\\'".join("'" + p + "'" for p in arg.split("'"))
@@ -110,7 +113,7 @@ class Berangere(commands.Bot):
             await ctx.send(msg)
                 
         
-        @self.command()
+        @self.command(aliases=["summon"])
         @commands.check(Berangere.is_guild_admin)
         async def move(ctx, channel_name=None):
             """
@@ -175,7 +178,6 @@ class Berangere(commands.Bot):
                         #User has no admin rights. Refuse to play sound
                         await ctx.send("Sorry but the bot is in another channel")
                         return
-                #await self.change_presence(activity=discord.Activity(name="Gros bordel", type=discord.ActivityType.listening), status=discord.Status.do_not_disturb)
                 await self.playSounds(ctx=ctx,directory=directory,sounds=all_songs, disconnect_after=must_disconnect)
             except commands.BadArgument as ex:
                 print(ex)
@@ -186,6 +188,33 @@ class Berangere(commands.Bot):
             except discord.errors.ClientException as ex:
                 #Not member of the guild or busy playing in same guild
                 print(ex)
+                await ctx.send("Sorry but the bot is in another channel")
+                return
+
+        @self.command(aliases=["yt"])
+        async def youtube(ctx, title):
+            try:
+                video = pafy.new(title)
+                best = video.getbestaudio()
+                playurl = best.url
+                must_disconnect = False
+                if ctx.voice_client == None:
+                    await ctx.author.voice.channel.connect()
+                    must_disconnect=True
+                elif ctx.voice_client.channel != ctx.author.voice.channel:
+                    #If not in same channel, check permissions
+                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
+                        #User has no admin rights. Refuse to play sound
+                        await ctx.send("Sorry but the bot is in another channel")
+                        return
+                await ctx.send(f"Playing {video.title} for {video.duration}")
+                await self.playURL(ctx, playurl, must_disconnect)
+            except AttributeError as ex:
+                print(ex)
+                await ctx.send("Try sending from a channel on your guild")
+            except discord.errors.ClientException as ex:
+                print(ex)
+                #Not member of the guild or busy playing in same guild
                 await ctx.send("Sorry but the bot is in another channel")
                 return
 
@@ -305,6 +334,17 @@ class Berangere(commands.Bot):
                 await ctx.send(f"{username}? Never heard of such a name...")
             else:
                 await ctx.send(f"{username} was last seen on {user[0]}")
+   
+    async def playURL(self, ctx, url, disconnect_after=True):
+        before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
+        volume=self.volume.get(ctx.guild, 1)
+        audio_source = discord.FFmpegPCMAudio(before_options=before_options, source=url)
+        audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
+        loop = asyncio.get_running_loop()
+        def disconnect(error):
+            if disconnect_after == True:
+                loop.create_task(ctx.voice_client.disconnect(force=True))
+        ctx.voice_client.play(audio_volume, after=disconnect)
 
     async def playSounds(self, ctx,directory, sounds, disconnect_after=True):
         if len(sounds) == 0:
@@ -324,7 +364,6 @@ class Berangere(commands.Bot):
         audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
         loop = asyncio.get_running_loop()
         def disconnect(error):
-            #loop.create_task(ctx.change_presence(discord.Activity(""), status=discord.Status.online))
             if disconnect_after == True:
                 loop.create_task(ctx.voice_client.disconnect(force=True))
         ctx.voice_client.play(audio_volume, after=disconnect)
