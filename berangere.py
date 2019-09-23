@@ -9,7 +9,8 @@ import argparse
 from datetime import datetime
 import sqlite3
 import pafy
-
+import gtts
+import tempfile
 #Requires discord.py pynacl youtube-dl pafy gtts
 
 def escapeshellarg(arg):
@@ -349,13 +350,11 @@ class Berangere(commands.Bot):
 
         @self.command()
         async def say(ctx, *words):
+            import tempfile
             """
             Speaks out loud the phrase given
             Use -xx as the first word to set the language
             """
-            import gtts
-            import tempfile
-
             if len(words) < 1:
                 return
             language = "en"
@@ -377,17 +376,15 @@ class Berangere(commands.Bot):
                         #User has no admin rights. Refuse to play sound
                         await ctx.send("Sorry but the bot is in another channel")
                         return
-                tf = tempfile.mkstemp(prefix="berangere_")
-                os.close(tf[0])
-                filename = tf[1]
-                tts.save(filename)
+                buf = tempfile.TemporaryFile()
+                tts.write_to_fp(buf)
+                buf.seek(0)
                 loop = asyncio.get_running_loop()
                 before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
                 def disconnect(error):
                     if must_disconnect == True:
                         loop.create_task(ctx.voice_client.disconnect(force=True))
-                    os.remove(filename)
-                audio_source = discord.FFmpegPCMAudio(filename, before_options=before_options)
+                audio_source = discord.FFmpegPCMAudio(source=buf,pipe=True, before_options=before_options)
                 audio_volume = discord.PCMVolumeTransformer(audio_source, volume=self.volume.get(ctx.guild, 1))
                 ctx.voice_client.play(audio_volume, after=disconnect)
             except AttributeError as ex:
@@ -398,6 +395,38 @@ class Berangere(commands.Bot):
                 print(ex)
                 await ctx.send("Sorry but the bot is in another channel")
                 return
+
+        @self.command()
+        async def spotify(ctx):
+            """
+            Lets the bot diffuse spotify songs
+            """
+            must_disconnect = False
+            try:
+                if ctx.voice_client == None:
+                    await ctx.author.voice.channel.connect()
+                    must_disconnect=True
+                elif ctx.voice_client.channel != ctx.author.voice.channel:
+                    #If not in same channel, check permissions
+                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
+                        #User has no admin rights. Refuse to play sound
+                        await ctx.send("Sorry but the bot is in another channel")
+                        return
+                loop = asyncio.get_running_loop()
+                def disconnect(error):
+                    if must_disconnect == True:
+                        loop.create_task(ctx.voice_client.disconnect(force=True))
+                audio_source = discord.FFmpegPCMAudio(source="default", before_options="-f alsa")
+                ctx.voice_client.play(audio_source, after=disconnect)
+            except AttributeError as ex:
+                print(ex)
+                await ctx.send("Try sending from a channel on your guild")
+            except discord.errors.ClientException as ex:
+                #Not member of the guild or busy playing in same guild
+                print(ex)
+                await ctx.send("Sorry but the bot is in another channel")
+                return
+
 
    
     async def playURL(self, ctx, url, disconnect_after=True):
@@ -474,12 +503,17 @@ class Berangere(commands.Bot):
         chan = chan[0]
         if before.channel == after.channel:
             return
+        if self.user == member:
+            return
         now = datetime.now().strftime("%H:%M:%S")
+        state=""
         if before.channel == None:
             #Connected
+            state="connected"
             await chan.send(f"**{member.display_name}** connected to channel **{after.channel.name}** at {now}")
         elif after.channel == None:
             #Disconnected
+            state="disconnected"
             await chan.send(f"**{member.display_name}** disconnected from channel **{before.channel.name}** at {now}")
             conn = sqlite3.connect("bot.db")
             curs = conn.cursor()
@@ -489,7 +523,37 @@ class Berangere(commands.Bot):
             conn.commit()
         else:
             #changed channel
+            state="changed"
             await chan.send(f"**{member.display_name}** moved from channel **{before.channel.name}** to **{after.channel.name}** at {now}")
+       
+        if member.guild.voice_client == None:
+            return
+        if member.guild.voice_client.is_playing():
+            return
+        bot_channel = member.guild.voice_client.channel
+        sentence = ""
+        if state == "disconnected":
+            if bot_channel == before.channel:
+                #Dire "déconnexion...."
+                sentence = f"{member.name} disconnected from your channel"
+        elif state == "changed":
+            if bot_channel == before.channel:
+                #Dire déconnexion...
+                sentence = f"{member.name} disconnected from your channel"
+            elif bot_channel == after.channel:
+                #Dire connexion
+                sentence = f"{member.name} connected to your channel"
+        elif state == "connected":
+            if bot_channel == after.channel:
+                #Dire connexion
+                sentence = f"{member.name} connected to your channel"
+        tts = gtts.gTTS(sentence, lang="fr-ca")
+        tf = tempfile.TemporaryFile()
+        tts.write_to_fp(tf)
+        tf.seek(0)
+        audio_source = discord.FFmpegPCMAudio(tf, pipe=True)
+        member.guild.voice_client.play(audio_source)
+        
 
     async def on_ready(self):
         print(f"Bot connected with name {self.user.name}")
