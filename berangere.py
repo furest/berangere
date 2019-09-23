@@ -24,6 +24,7 @@ class Berangere(commands.Bot):
         self.saturation = dict()
         self.volume = dict()
         self.loops =list()
+        self.follow = dict()
         if not os.path.isfile("bot.db"):
             conn = sqlite3.connect("bot.db")
             cur = conn.cursor()
@@ -120,9 +121,9 @@ class Berangere(commands.Bot):
             """
             Moves the bot to the channel given in parameter
             """
-            if Berangere.is_playing(ctx):
-                await ctx.send("Sorry but the bot is already busy playing")
-                return
+            # if Berangere.is_playing(ctx):
+            #     await ctx.send("Sorry but the bot is already busy playing")
+            #     return
             if channel_name==None:
                 if ctx.author.voice.channel != None:
                     dst_channel = ctx.author.voice.channel
@@ -350,7 +351,6 @@ class Berangere(commands.Bot):
 
         @self.command()
         async def say(ctx, *words):
-            import tempfile
             """
             Speaks out loud the phrase given
             Use -xx as the first word to set the language
@@ -426,9 +426,20 @@ class Berangere(commands.Bot):
                 print(ex)
                 await ctx.send("Sorry but the bot is in another channel")
                 return
+        @self.command(aliases=['youreit'])
+        @commands.check(Berangere.is_guild_admin)
+        async def follow(ctx, username=None, song=None):
+            """
+            The bot will follow the user given
+            """
+            if username == None:
+                if ctx.guild in self.follow:
+                    self.follow.pop(ctx.guild)
+                await ctx.send(f"The bot will stop following")
+            else:
+                self.follow[ctx.guild] = {'username':username, 'song':song}
+                await ctx.send(f"The bot will now follow {username}")
 
-
-   
     async def playURL(self, ctx, url, disconnect_after=True):
         before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
         volume=self.volume.get(ctx.guild, 1)
@@ -526,6 +537,17 @@ class Berangere(commands.Bot):
             state="changed"
             await chan.send(f"**{member.display_name}** moved from channel **{before.channel.name}** to **{after.channel.name}** at {now}")
        
+        if state in ("connected", "changed"):
+            if member.guild in self.follow: 
+                if member.name == self.follow[member.guild]['username']:
+                    if member.guild.voice_client == None:
+                        await after.channel.connect()
+                    else:
+                        await member.guild.voice_client.move_to(after.channel)
+                    if self.follow[member.guild]['song'] != None and not member.guild.voice_client.is_playing():
+                        member.guild.voice_client.play(discord.FFmpegPCMAudio(f"{config['sounds_base_dir']}/{self.follow[member.guild]['song']}.mp3"))
+                return
+            
         if member.guild.voice_client == None:
             return
         if member.guild.voice_client.is_playing():
