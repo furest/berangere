@@ -192,9 +192,12 @@ class Berangere(commands.Bot):
                 return
 
         @self.command(aliases=["yt"])
-        async def youtube(ctx, title):
+        async def youtube(ctx, url):
+            """
+            Plays sound from a youtube video.
+            """
             try:
-                video = pafy.new(title)
+                video = pafy.new(url)
                 best = video.getbestaudio()
                 playurl = best.url
                 must_disconnect = False
@@ -311,6 +314,9 @@ class Berangere(commands.Bot):
 
         @self.command()
         async def saturation(ctx, value):
+            """
+            Sets the saturation of the audio streams of the bot
+            """
             try:
                 self.saturation[ctx.guild] = float(value)
                 await ctx.send(f"Saturation set to {value}")
@@ -318,6 +324,9 @@ class Berangere(commands.Bot):
                 await ctx.send("Value must be a number")
         @self.command()
         async def volume(ctx, value):
+            """
+            Sets the volume of the audio streams of the bot
+            """
             try:
                 self.volume[ctx.guild] = float(value)
                 await ctx.send(f"Volume set to {value}")
@@ -326,6 +335,9 @@ class Berangere(commands.Bot):
                 
         @self.command()
         async def lastSeen(ctx, username):
+            """
+            Shows when user has been last seen
+            """
             conn = sqlite3.connect("bot.db")
             curs = conn.cursor()
             curs.execute("SELECT last_seen FROM users WHERE name = ?", (username,))
@@ -435,8 +447,9 @@ class Berangere(commands.Bot):
             return
         if message.channel.name not in config['authorized_channel_names'] or message.author == self.user:
             return
-        await message.channel.send(f"I'm a bot you dumbass. If you're here for help type \"{config['command_prefix']}help\" like everyone else")
-        await message.add_reaction("😡")
+        if config['aggressive']:
+            await message.channel.send(f"I'm a bot you dumbass. If you're here for help type \"{config['command_prefix']}help\" like everyone else")
+            await message.add_reaction("😡")
 
 
 if __name__ == "__main__":
