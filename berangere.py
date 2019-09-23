@@ -10,7 +10,7 @@ from datetime import datetime
 import sqlite3
 import pafy
 
-#Requires discord.py pynacl youtube-dl pafy
+#Requires discord.py pynacl youtube-dl pafy gtts
 
 def escapeshellarg(arg):
     return "\\'".join("'" + p + "'" for p in arg.split("'"))
@@ -346,6 +346,59 @@ class Berangere(commands.Bot):
                 await ctx.send(f"{username}? Never heard of such a name...")
             else:
                 await ctx.send(f"{username} was last seen on {user[0]}")
+
+        @self.command()
+        async def say(ctx, *words):
+            """
+            Speaks out loud the phrase given
+            Use -xx as the first word to set the language
+            """
+            import gtts
+            import tempfile
+
+            if len(words) < 1:
+                return
+            language = "en"
+            phrase=""
+            if words[0][0] == "-":
+                language=words[0][1:]
+                phrase = ' '.join(words[1:])
+            else:
+                phrase = ' '.join(words)
+            tts = gtts.gTTS(phrase, lang=language)
+            must_disconnect = False
+            try:
+                if ctx.voice_client == None:
+                    await ctx.author.voice.channel.connect()
+                    must_disconnect=True
+                elif ctx.voice_client.channel != ctx.author.voice.channel:
+                    #If not in same channel, check permissions
+                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
+                        #User has no admin rights. Refuse to play sound
+                        await ctx.send("Sorry but the bot is in another channel")
+                        return
+                tf = tempfile.mkstemp(prefix="berangere_")
+                os.close(tf[0])
+                filename = tf[1]
+                tts.save(filename)
+                loop = asyncio.get_running_loop()
+                before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
+                def disconnect(error):
+                    if must_disconnect == True:
+                        loop.create_task(ctx.voice_client.disconnect(force=True))
+                    os.remove(filename)
+                audio_source = discord.FFmpegPCMAudio(filename, before_options=before_options)
+                audio_volume = discord.PCMVolumeTransformer(audio_source, volume=self.volume.get(ctx.guild, 1))
+                ctx.voice_client.play(audio_volume, after=disconnect)
+            except AttributeError as ex:
+                print(ex)
+                await ctx.send("Try sending from a channel on your guild")
+            except discord.errors.ClientException as ex:
+                #Not member of the guild or busy playing in same guild
+                print(ex)
+                await ctx.send("Sorry but the bot is in another channel")
+                return
+
    
     async def playURL(self, ctx, url, disconnect_after=True):
         before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
