@@ -50,6 +50,30 @@ class Berangere(commands.Bot):
         except AttributeError as ex:
             return False
 
+    async def user_has_voice(ctx):
+        """
+        Returns true if the user is connected to a voice channel reachable by the bot
+        """
+        if type(ctx.author) is discord.Member:
+            if ctx.author.voice is not None:
+                return True
+            else:
+                raise commands.CheckFailure("You are not connected to a voice channel of your guild")
+        else:
+            raise commands.CheckFailure("This command cannot work through DM")
+
+    async def bot_not_playing(ctx):
+        """
+        Returns true if the user is connected to a voice channel reachable by the bot
+        """
+        if ctx.guild.voice_client != None:
+            if ctx.guild.voice_client.is_playing():
+                raise commands.CheckFailure("Sorry but the bot is busy playing") from None
+            else:
+                return True
+        else:
+            return True
+
     async def is_guild_admin(ctx):
         """
         Returns true if the user that invoked the command is an admin
@@ -121,12 +145,11 @@ class Berangere(commands.Bot):
             """
             Moves the bot to the channel given in parameter
             """
-            # if Berangere.is_playing(ctx):
-            #     await ctx.send("Sorry but the bot is already busy playing")
-            #     return
             if channel_name==None:
-                if ctx.author.voice.channel != None:
-                    dst_channel = ctx.author.voice.channel
+                if ctx.author.voice == None:
+                    await ctx.send("Either provide a channel name or connect to a voice channel")
+                    return
+                dst_channel = ctx.author.voice.channel
             else:
                 channel = [channel for channel in ctx.guild.voice_channels if channel.name==channel_name]
                 if len(channel) > 0:
@@ -160,6 +183,8 @@ class Berangere(commands.Bot):
                 await ctx.voice_client.disconnect()
 
         @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def playAll(ctx, directory=None):
             """
             Plays all sounds in the default directory or in the directory specified
@@ -168,151 +193,98 @@ class Berangere(commands.Bot):
                 directory = config['sounds_base_dir']
             else:
                 directory = "./"+directory
+            
+            all_songs = [f for f in os.listdir(f"{directory}") if os.path.splitext(f)[-1] == ".mp3"]
+            must_disconnect=await self.connect_channel(ctx)
             try:
-                must_disconnect=False
-                all_songs = [f for f in os.listdir(f"{directory}") if os.path.splitext(f)[-1] == ".mp3"]
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
                 await self.playSounds(ctx=ctx,directory=directory,sounds=all_songs, disconnect_after=must_disconnect)
             except commands.BadArgument as ex:
                 print(ex)
                 await ctx.send(ex)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                #Not member of the guild or busy playing in same guild
-                print(ex)
-                await ctx.send("Sorry but the bot is in another channel")
+        
+        @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
+        async def play(ctx, sound):
+            """
+            Plays given sound
+            """
+            if not os.path.isfile(f"{config['sounds_base_dir']}/{sound}.mp3"):
+                await ctx.send(f"{sound} is not a valid sound.")
                 return
+            must_disconnect=await self.connect_channel(ctx)
+            await self.playSounds(ctx=ctx,directory=config['sounds_base_dir'],sounds=[sound+".mp3"], disconnect_after=must_disconnect)
+            
 
         @self.command(aliases=["yt"])
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def youtube(ctx, url):
             """
             Plays sound from a youtube video.
             """
-            try:
-                video = pafy.new(url)
-                best = video.getbestaudio()
-                playurl = best.url
-                must_disconnect = False
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
-                await ctx.send(f"Playing {video.title} for {video.duration}")
-                await self.playURL(ctx, playurl, must_disconnect)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                print(ex)
-                #Not member of the guild or busy playing in same guild
-                await ctx.send("Sorry but the bot is in another channel")
-                return
+            video = pafy.new(url)
+            best = video.getbestaudio()
+            playurl = best.url
+            must_disconnect=await self.connect_channel(ctx)
+            await ctx.send(f"Playing {video.title} for {video.duration}")
+            await self.playURL(ctx, playurl, must_disconnect)
 
         @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def ls(ctx, *sounds):
             """
             Plays the list of sounds sounds simultaneously
             """
+            user_voice_channel = ctx.author.voice.channel
+            sounds = [sound+".mp3" for sound in sounds if os.path.isfile(f"{config['sounds_base_dir']}/{sound}.mp3")]
+            must_disconnect=await self.connect_channel(ctx)
             try:
-                must_disconnect=False
-                user_voice_channel = ctx.author.voice.channel
-                sounds = [sound+".mp3" for sound in sounds if os.path.isfile(f"{config['sounds_base_dir']}/{sound}.mp3")]
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
                 await self.playSounds(ctx=ctx,directory=config['sounds_base_dir'],sounds=sounds, disconnect_after=must_disconnect)
             except commands.BadArgument as ex:
                 print(ex)
                 await ctx.send(ex)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                print(ex)
-                #Not member of the guild or busy playing in same guild
-                await ctx.send("Sorry but the bot is in another channel")
-                return
 
         @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def mu(ctx, sound, number, interval):
             """
             Plays the given sound {number} times at an interval of {interval} milliseconds
             """
-            try:
-                must_disconnect=False
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
-                if not os.path.isfile(f"{config['sounds_base_dir']}/{sound}.mp3"):
-                    await ctx.send("This sound does not exist")
-                    return
-                if str(number).isdigit() and str(interval).isdigit():
-                    repeat=int(number)
-                    delay = float(interval)/1000
-                    plays_done = 0
-                    loop = asyncio.get_running_loop()
-                    before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
-                    volume=self.volume.get(ctx.guild, 1)
-                    def repeat_or_disconnect(err):
-                        if ctx.guild not in self.loops:
-                            return
-                        nonlocal plays_done
-                        plays_done = plays_done + 1
-                        if err != None:
-                            if ctx.guild in self.loops:
-                                self.loops.remove(ctx.guild)
-                            return
-                        if plays_done == repeat:
-                            if ctx.guild in self.loops:
-                                self.loops.remove(ctx.guild)
-                            if must_disconnect:
-                                loop.create_task(ctx.voice_client.disconnect(force=True))
-                        else:
-                            time.sleep(delay)
-                            audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
-                            audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
-                            ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
-
-                    audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
-                    audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
-                    if ctx.guild not in self.loops:
-                        self.loops.append(ctx.guild)
-                    ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                print(ex)
-                #Not member of the guild or busy playing in same guild
-                await ctx.send("Sorry but the bot is in another channel")
+            must_disconnect=await self.connect_channel(ctx)
+            if not os.path.isfile(f"{config['sounds_base_dir']}/{sound}.mp3"):
+                await ctx.send("This sound does not exist")
                 return
+            if str(number).isdigit() and str(interval).isdigit():
+                repeat=int(number)
+                delay = float(interval)/1000
+                plays_done = 0
+                loop = asyncio.get_running_loop()
+                before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
+                volume=self.volume.get(ctx.guild, 1)
+                def repeat_or_disconnect(err):
+                    if ctx.guild not in self.loops:
+                        return
+                    nonlocal plays_done
+                    plays_done = plays_done + 1
+                    if err != None or plays_done == repeat:
+                        if ctx.guild in self.loops:
+                            self.loops.remove(ctx.guild)
+                        if must_disconnect:
+                            loop.create_task(ctx.voice_client.disconnect(force=True))
+                    else:
+                        time.sleep(delay)
+                        audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
+                        audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
+                        ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
+
+                audio_source = discord.FFmpegPCMAudio(options=before_options, source=f"{config['sounds_base_dir']}/{sound}.mp3")
+                audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
+                if ctx.guild not in self.loops:
+                    self.loops.append(ctx.guild)
+                ctx.voice_client.play(audio_volume, after=repeat_or_disconnect)
 
         @self.command()
         async def saturation(ctx, value):
@@ -350,6 +322,8 @@ class Berangere(commands.Bot):
                 await ctx.send(f"{username} was last seen on {user[0]}")
 
         @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def say(ctx, *words):
             """
             Speaks out loud the phrase given
@@ -365,67 +339,34 @@ class Berangere(commands.Bot):
             else:
                 phrase = ' '.join(words)
             tts = gtts.gTTS(phrase, lang=language)
-            must_disconnect = False
-            try:
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
-                buf = tempfile.TemporaryFile()
-                tts.write_to_fp(buf)
-                buf.seek(0)
-                loop = asyncio.get_running_loop()
-                before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
-                def disconnect(error):
-                    if must_disconnect == True:
-                        loop.create_task(ctx.voice_client.disconnect(force=True))
-                audio_source = discord.FFmpegPCMAudio(source=buf,pipe=True, before_options=before_options)
-                audio_volume = discord.PCMVolumeTransformer(audio_source, volume=self.volume.get(ctx.guild, 1))
-                ctx.voice_client.play(audio_volume, after=disconnect)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                #Not member of the guild or busy playing in same guild
-                print(ex)
-                await ctx.send("Sorry but the bot is in another channel")
-                return
+            must_disconnect=await self.connect_channel(ctx)
+            buf = tempfile.TemporaryFile()
+            tts.write_to_fp(buf)
+            buf.seek(0)
+            loop = asyncio.get_running_loop()
+            before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
+            def disconnect(error):
+                if must_disconnect == True:
+                    loop.create_task(ctx.voice_client.disconnect(force=True))
+            audio_source = discord.FFmpegPCMAudio(source=buf,pipe=True, before_options=before_options)
+            audio_volume = discord.PCMVolumeTransformer(audio_source, volume=self.volume.get(ctx.guild, 1))
+            ctx.voice_client.play(audio_volume, after=disconnect)
 
         @self.command()
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
         async def spotify(ctx):
             """
             Lets the bot diffuse spotify songs
             """
-            must_disconnect = False
-            try:
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
-                loop = asyncio.get_running_loop()
-                def disconnect(error):
-                    if must_disconnect == True:
-                        loop.create_task(ctx.voice_client.disconnect(force=True))
-                audio_source = discord.FFmpegPCMAudio(source="default", before_options="-f alsa")
-                ctx.voice_client.play(audio_source, after=disconnect)
-            except AttributeError as ex:
-                print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                #Not member of the guild or busy playing in same guild
-                print(ex)
-                await ctx.send("Sorry but the bot is in another channel")
-                return
+            must_disconnect=await self.connect_channel(ctx)
+            loop = asyncio.get_running_loop()
+            def disconnect(error):
+                if must_disconnect == True:
+                    loop.create_task(ctx.voice_client.disconnect(force=True))
+            audio_source = discord.FFmpegPCMAudio(source="default", before_options="-f alsa")
+            ctx.voice_client.play(audio_source, after=disconnect)
+
         @self.command(aliases=['youreit'])
         @commands.check(Berangere.is_guild_admin)
         async def follow(ctx, username=None, song=None):
@@ -463,7 +404,6 @@ class Berangere(commands.Bot):
             before_options = f'-filter_complex "amix=inputs={nb_sounds}:duration=longest[a];[a]volume={self.saturation.get(ctx.guild, 1)}" {source_str}'
         else:
             before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
-       
         volume=self.volume.get(ctx.guild, 1)
         audio_source = discord.FFmpegPCMAudio(before_options=before_options, source=f"{directory}/{sounds[0]}")
         audio_volume = discord.PCMVolumeTransformer(audio_source, volume=volume)
@@ -472,41 +412,40 @@ class Berangere(commands.Bot):
             if disconnect_after == True:
                 loop.create_task(ctx.voice_client.disconnect(force=True))
         ctx.voice_client.play(audio_volume, after=disconnect)
+
+    async def connect_channel(self, ctx):
+        if ctx.voice_client == None:
+            await ctx.author.voice.channel.connect()
+            return True #Bot will have to disconnect after
+        elif ctx.voice_client.channel != ctx.author.voice.channel:
+            #If not in same channel, check permissions
+            if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
+                #User has no admin rights. Refuse to play sound
+                raise commands.MissingPermissions("Sorry but the bot is in another channel") from None
+            return False #Bot will not have to disconnect after
+
     async def on_command_error(self, ctx, exc):
         """
         Called when an uncaught exception is thrown in a command
         """
         if type(exc) is commands.CommandNotFound:
             #When a command does not exist, try to play the sound named like the command.
-            command = ctx.invoked_with
-            if not os.path.isfile(f"{config['sounds_base_dir']}/{command}.mp3"):
-                await ctx.send(f"{command} is not a valid sound.")
-                return
             try:
-                must_disconnect=False
-                if ctx.voice_client == None:
-                    await ctx.author.voice.channel.connect()
-                    must_disconnect=True
-                elif ctx.voice_client.channel != ctx.author.voice.channel:
-                    #If not in same channel, check permissions
-                    if type(ctx.author) is not discord.Member or not ctx.author.guild_permissions.administrator:
-                        #User has no admin rights. Refuse to play sound
-                        await ctx.send("Sorry but the bot is in another channel")
-                        return
-                user_voice_channel = ctx.author.voice.channel
-                await self.playSounds(ctx=ctx,directory=config['sounds_base_dir'], sounds=[command+".mp3"], disconnect_after=must_disconnect)
-            except AttributeError as ex:
+                if await Berangere.user_has_voice(ctx) and await Berangere.bot_not_playing(ctx):
+                    audio = ctx.invoked_with
+                    play_command = self.get_command("play")
+                    ret = await ctx.invoke(play_command, audio)
+            except commands.CommandError as exc:
+                await self.on_command_error(ctx, exc)
+            except Exception as ex:
                 print(ex)
-                await ctx.send("Try sending from a channel on your guild")
-            except discord.errors.ClientException as ex:
-                #Not member of the guild or busy playing in same guild
-                print(ex)
-                await ctx.send("Sorry but the bot is in another channel")
-                return
         elif type(exc) is commands.MissingRequiredArgument:
             await ctx.send(ctx.command.usage)
+        elif type(exc) is commands.CheckFailure:
+            await ctx.send(exc)
         else:
             print(exc)
+
     async def on_voice_state_update(self, member, before, after):
         chan = [c for c in member.guild.text_channels if c.name =="voice-log"]
         if len(chan) == 0:
@@ -589,7 +528,6 @@ class Berangere(commands.Bot):
         if config['aggressive']:
             await message.channel.send(f"I'm a bot you dumbass. If you're here for help type \"{config['command_prefix']}help\" like everyone else")
             await message.add_reaction("😡")
-
 
 if __name__ == "__main__":
     conf_file = open("config.json", "r")
