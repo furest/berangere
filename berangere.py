@@ -382,9 +382,9 @@ class Berangere(commands.Bot):
                 await ctx.send(f"The bot will now follow {username}")
 
         @self.command(aliases=['ussr'])
-        #@commands.check(Berangere.user_has_voice)
-        #@commands.check(Berangere.bot_not_playing)
-        #@commands.check(Berangere.is_guild_admin)
+        @commands.check(Berangere.user_has_voice)
+        @commands.check(Berangere.bot_not_playing)
+        @commands.check(Berangere.is_guild_admin)
         async def urss(ctx):
             """
             For the glory of artotzka
