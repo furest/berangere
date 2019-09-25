@@ -127,7 +127,7 @@ class Berangere(commands.Bot):
             """
             Displays the list of sounds the bot knows
             """
-            files = ['0'+os.path.splitext(f)[0] for f in os.listdir(config['sounds_base_dir']) if os.path.splitext(f)[1] == ".mp3"]
+            files = [config['command_prefix']+os.path.splitext(f)[0] for f in os.listdir(config['sounds_base_dir']) if os.path.splitext(f)[1] == ".mp3"]
             ret = config["separator"].join(files)
             last_cut = 0
             while len(ret[last_cut:]) > 1999:
@@ -380,6 +380,31 @@ class Berangere(commands.Bot):
             else:
                 self.follow[ctx.guild] = {'username':username, 'song':song}
                 await ctx.send(f"The bot will now follow {username}")
+
+        @self.command(aliases=['ussr'])
+        #@commands.check(Berangere.user_has_voice)
+        #@commands.check(Berangere.bot_not_playing)
+        #@commands.check(Berangere.is_guild_admin)
+        async def urss(ctx):
+            """
+            For the glory of artotzka
+            """
+            must_disconnect=await self.connect_channel(ctx)
+            saturation_command = self.get_command("saturation")
+            volume_command = self.get_command("volume")
+            with open("ussr.png", "rb") as f:
+                flag=discord.File(fp=f)
+                await ctx.send("☭☭☭",file=flag)
+                f.seek(0)
+                flag=discord.File(fp=f)
+                await ctx.send("☭☭☭",file=flag)
+                f.seek(0)
+                flag=discord.File(fp=f)
+                await ctx.send("☭☭☭",file=flag)
+            await ctx.invoke(saturation_command, "150")
+            await ctx.invoke(volume_command, "0.1")
+            await self.playSounds(ctx=ctx, directory=config['sounds_base_dir'], sounds=["ussr.mp3"], disconnect_after=must_disconnect)
+            
 
     async def playURL(self, ctx, url, disconnect_after=True):
         before_options = f'-filter_complex "volume={self.saturation.get(ctx.guild, 1)}"'
